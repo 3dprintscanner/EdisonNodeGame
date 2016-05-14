@@ -1,0 +1,238 @@
+#!/usr/bin/env node
+
+/**
+ * Module dependencies.
+ */
+
+var app = require('../app');
+var debug = require('debug')('NodeGameServer:server');
+var http = require('http');
+
+// var game = require('../game');
+/**
+ * Get port from environment and store in Express.
+ */
+
+var port = normalizePort(process.env.PORT || '3000');
+app.set('port', port);
+
+/**
+ * Create HTTP server.
+ */
+
+var server = http.createServer(app);
+// var io = require('socket.io')(server);
+init(server);
+// game.init(server);
+/**
+ * Listen on provided port, on all network interfaces.
+ */
+// io.on('connection', function(client) {  
+//     console.log('Client connected...');
+
+//     client.on('join', function(data) {
+//         console.log(data);
+//     });
+
+// });
+
+var util = require("util"),         // Utility resources (logging, object inspection, etc)
+  io = require("socket.io"),        // Socket.IO
+  Player = require("./../Player").Player;  // Player class
+
+
+/**************************************************
+** GAME VARIABLES
+**************************************************/
+var socket;   // Socket controller
+var players;  // Array of connected players
+
+
+
+function setEventHandlers() {
+  // Socket.IO
+  socket.on("connection", onSocketConnection);
+};
+function testConnection(client){
+  console.log('Connection!');
+}
+// New socket connection
+function onSocketConnection(client) {
+  
+  console.log('client connected');
+  util.log("New player has connected: "+client.id);
+  // Listen for client disconnected
+  client.on("disconnect", onClientDisconnect);
+
+  // Listen for new player message
+  client.on("new player", onNewPlayer);
+
+  // Listen for move player message
+  client.on("move player", onMovePlayer);
+};
+
+// Socket client has disconnected
+function onClientDisconnect() {
+  util.log("Player has disconnected: "+this.id);
+
+  var removePlayer = playerById(this.id);
+
+  // Player not found
+  if (!removePlayer) {
+    util.log("Player not found: "+this.id);
+    return;
+  };
+
+  // Remove player from players array
+  players.splice(players.indexOf(removePlayer), 1);
+
+  // Broadcast removed player to connected socket clients
+  this.broadcast.emit("remove player", {id: this.id});
+};
+
+// New player has joined
+function onNewPlayer(data) {
+  // Create a new player
+  var newPlayer = new Player(data.x, data.y);
+
+  newPlayer.id = this.id;
+
+  // Broadcast new player to connected socket clients
+  this.broadcast.emit("new player", {id: newPlayer.id, x: newPlayer.getX(), y: newPlayer.getY()});
+
+  // Send existing players to the new player
+  var i, existingPlayer;
+  for (i = 0; i < players.length; i++) {
+    existingPlayer = players[i];
+    this.emit("new player", {id: existingPlayer.id, x: existingPlayer.getX(), y: existingPlayer.getY()});
+  };
+    
+  // Add new player to the players array
+  players.push(newPlayer);
+};
+
+// Player has moved
+function onMovePlayer(data) {
+  // Find player in array
+  var movePlayer = playerById(this.id);
+
+  // Player not found
+  if (!movePlayer) {
+    util.log("Player not found: "+this.id);
+    return;
+  };
+
+  // Update player position
+  movePlayer.setX(data.x);
+  movePlayer.setY(data.y);
+
+  // Broadcast updated position to connected socket clients
+  this.broadcast.emit("move player", {id: movePlayer.id, x: movePlayer.getX(), y: movePlayer.getY()});
+};
+
+
+/**************************************************
+** GAME HELPER FUNCTIONS
+**************************************************/
+// Find player by ID
+function playerById(id) {
+  var i;
+  for (i = 0; i < players.length; i++) {
+    if (players[i].id == id)
+      return players[i];
+  };
+  
+  return false;
+};
+
+/**************************************************
+** GAME INITIALISATION
+**************************************************/
+function init(server) {
+  // Create an empty array to store players
+  players = [];
+
+  // Set up Socket.IO to listen on port 8000
+  // socket = io.listen(8000);
+  socket = require('socket.io')(server);
+
+  // socket.set('log level', 2);
+  // socket.set("transports", ["websocket"]);
+  // Configure Socket.IO\
+
+  // Start listening for events
+  setEventHandlers();
+};
+
+
+/**************************************************
+** GAME EVENT HANDLERS
+**************************************************/
+
+
+
+
+
+server.listen(port);
+server.on('error', onError);
+server.on('listening', onListening);
+
+/**
+ * Normalize a port into a number, string, or false.
+ */
+
+function normalizePort(val) {
+  var port = parseInt(val, 10);
+
+  if (isNaN(port)) {
+    // named pipe
+    return val;
+  }
+
+  if (port >= 0) {
+    // port number
+    return port;
+  }
+
+  return false;
+}
+
+/**
+ * Event listener for HTTP server "error" event.
+ */
+
+function onError(error) {
+  if (error.syscall !== 'listen') {
+    throw error;
+  }
+
+  var bind = typeof port === 'string'
+    ? 'Pipe ' + port
+    : 'Port ' + port;
+
+  // handle specific listen errors with friendly messages
+  switch (error.code) {
+    case 'EACCES':
+      console.error(bind + ' requires elevated privileges');
+      process.exit(1);
+      break;
+    case 'EADDRINUSE':
+      console.error(bind + ' is already in use');
+      process.exit(1);
+      break;
+    default:
+      throw error;
+  }
+}
+
+/**
+ * Event listener for HTTP server "listening" event.
+ */
+
+function onListening() {
+  var addr = server.address();
+  var bind = typeof addr === 'string'
+    ? 'pipe ' + addr
+    : 'port ' + addr.port;
+  debug('Listening on ' + bind);
+}
